@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/siteworxpro/ysf-reflector-go/internal/config"
+	"github.com/siteworxpro/ysf-reflector-go/internal/web"
 )
 
 // Reflector is a YSF (Yaesu System Fusion) UDP reflector.
@@ -23,6 +24,21 @@ type Reflector struct {
 	watchdogMu      sync.Mutex
 	watchdogTimer   *time.Timer
 	watchdogCurrent string // callsign currently on air, empty when idle
+}
+
+// Clients returns a snapshot of all currently connected clients.
+// It satisfies web.ClientProvider without creating an import cycle.
+func (r *Reflector) Clients() []web.ClientInfo {
+	raw := r.clients.snapshot()
+	out := make([]web.ClientInfo, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, web.ClientInfo{
+			Callsign: c.callsign,
+			Addr:     c.addr.String(),
+			LastSeen: c.lastSeen,
+		})
+	}
+	return out
 }
 
 // New creates a Reflector from the supplied configuration.
@@ -46,6 +62,16 @@ func (r *Reflector) Run() error {
 
 	log.Printf("YSF reflector %s listening on UDP port %d (client timeout %ds)",
 		r.cfg.Callsign, r.cfg.Port, r.cfg.Timeout)
+
+	webSrv, err := web.New(r.cfg, r)
+	if err != nil {
+		return fmt.Errorf("init web server: %w", err)
+	}
+	go func() {
+		if err := webSrv.ListenAndServe(); err != nil {
+			log.Printf("web server error: %v", err)
+		}
+	}()
 
 	go r.evictLoop()
 	go r.serverPollLoop()

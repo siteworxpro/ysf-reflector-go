@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Name}} — YSF Reflector</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3a;
+      --accent:  #4f9cf9;
+      --green:   #3ecf8e;
+      --red:     #f87171;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --radius:  8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    header .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    header .meta span { color: var(--text); }
+
+    header .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+      margin-left: auto;
+      transition: background 0.3s;
+    }
+    header .status-dot.stale { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    main {
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .stat-card .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 10px 16px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(79,156,249,0.05); }
+
+    tbody td {
+      padding: 12px 16px;
+      vertical-align: middle;
+    }
+
+    .callsign {
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+    }
+
+    .addr { color: var(--muted); font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-green { background: rgba(62,207,142,0.15); color: var(--green); }
+    .badge-yellow { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+    .last-seen { color: var(--text); }
+    .last-seen-ts { color: var(--muted); font-size: 12px; }
+
+    .empty {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--muted);
+    }
+
+    .refresh-info {
+      text-align: right;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+    .refresh-info span { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="logo">{{.Callsign}} - {{.Id}}</div>
+      <div class="meta">
+        UDP&nbsp;<span>{{.Port}}</span>
+        &nbsp;·&nbsp;
+        {{if .Description}}{{.Description}}{{end}}
+      </div>
+    </div>
+    <div class="status-dot" id="statusDot" title="API connection status"></div>
+  </header>
+
+  <main>
+    <div class="stats">
+      <div class="stat-card">
+        <div class="label">Connected Nodes</div>
+        <div class="value" id="nodeCount">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Reflector Name</div>
+        <div class="value" style="font-size:18px; padding-top:4px;">{{.Name}}</div>
+      </div>
+    </div>
+
+    <div class="section-title">Connected Clients</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Callsign</th>
+          <th>Address</th>
+          <th>Status</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody id="clientTable">
+        <tr><td colspan="4" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+    <div class="refresh-info">Auto-refreshes every 5s &nbsp;·&nbsp; Last update: <span id="lastUpdate">—</span></div>
+  </main>
+
+  <script>
+    const dot = document.getElementById('statusDot');
+    const tbody = document.getElementById('clientTable');
+    const nodeCount = document.getElementById('nodeCount');
+    const lastUpdate = document.getElementById('lastUpdate');
+
+    function ago(isoStr) {
+      const d = new Date(isoStr);
+      const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (secs < 5)  return 'just now';
+      if (secs < 60) return secs + 's ago';
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return mins + 'm ' + (secs % 60) + 's ago';
+      const hrs = Math.floor(mins / 60);
+      return hrs + 'h ' + (mins % 60) + 'm ago';
+    }
+
+    function statusBadge(isoStr) {
+      const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (secs < 30)  return '<span class="badge badge-green">Active</span>';
+      return '<span class="badge badge-yellow">Idle</span>';
+    }
+
+    function render(clients) {
+      nodeCount.textContent = clients.length;
+      if (clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No nodes connected</td></tr>';
+        return;
+      }
+      // Sort by callsign
+      clients.sort((a, b) => a.callsign.localeCompare(b.callsign));
+      tbody.innerHTML = clients.map(c => `
+        <tr>
+          <td class="callsign">${esc(c.callsign)}</td>
+          <td class="addr">${esc(c.addr)}</td>
+          <td>${statusBadge(c.last_seen)}</td>
+          <td>
+            <div class="last-seen">${ago(c.last_seen)}</div>
+            <div class="last-seen-ts">${new Date(c.last_seen).toLocaleTimeString()}</div>
+          </td>
+        </tr>`).join('');
+    }
+
+    function esc(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function fetchClients() {
+      try {
+        const res = await fetch('/api/clients');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        render(data);
+        dot.classList.remove('stale');
+        lastUpdate.textContent = new Date().toLocaleTimeString();
+      } catch (e) {
+        dot.classList.add('stale');
+        console.error('fetch failed:', e);
+      }
+    }
+
+    fetchClients();
+    setInterval(fetchClients, 5000);
+
+    // Refresh relative times every second without re-fetching
+    setInterval(() => {
+      document.querySelectorAll('tbody tr[data-ts]').forEach(tr => {
+        const ts = tr.getAttribute('data-ts');
+        tr.querySelector('.last-seen').textContent = ago(ts);
+      });
+    }, 1000);
+  </script>
+</body>
+</html>

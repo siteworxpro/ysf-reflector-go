@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Callsign    string `yaml:"callsign"`    // 10-char max, space-padded
 	Port        int    `yaml:"port"`        // UDP port, default 42000
+	HTTPPort    int    `yaml:"http_port"`   // HTTP dashboard port, default 8080
 	Timeout     int    `yaml:"timeout"`     // Client idle timeout in seconds, default 240
 	Debug       bool   `yaml:"debug"`       // Log every packet
 	ID          uint32 `yaml:"id"`          // Numeric ID reported in YSFS status packets
@@ -48,6 +49,12 @@ func (c *Config) validate() error {
 	}
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("port %d out of range", c.Port)
+	}
+	if c.HTTPPort == 0 {
+		c.HTTPPort = 8080
+	}
+	if c.HTTPPort < 1 || c.HTTPPort > 65535 {
+		return fmt.Errorf("http_port %d out of range", c.HTTPPort)
 	}
 	if c.Timeout == 0 {
 		c.Timeout = 240

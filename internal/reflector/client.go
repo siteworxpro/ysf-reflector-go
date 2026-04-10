@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+
 // client represents a connected YSF node/hotspot.
 type client struct {
 	addr     *net.UDPAddr
