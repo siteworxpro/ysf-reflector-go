@@ -3,6 +3,7 @@ callsign: A1234          # Your reflector callsign (max 10 characters)
 port: 42000              # UDP port to listen on (standard YSF port is 42000)
 timeout: 240             # Seconds before an idle client is disconnected
 debug: false             # Log every packet (verbose)
+parrot: false            # Buffer each transmission and replay it to all nodes after TX ends
 
 # Reported in YSFS status query responses
 id: 0                    # Numeric reflector ID (reported to querying nodes)
