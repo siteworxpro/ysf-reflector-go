@@ -101,11 +101,7 @@ func (s *Server) handleAPIClients(w http.ResponseWriter, r *http.Request) {
 	clients := s.provider.Clients()
 	out := make([]clientJSON, 0, len(clients))
 	for _, c := range clients {
-		out = append(out, clientJSON{
-			Callsign: c.Callsign,
-			Addr:     c.Addr,
-			LastSeen: c.LastSeen,
-		})
+		out = append(out, clientJSON(c))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

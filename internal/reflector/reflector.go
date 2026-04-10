@@ -58,7 +58,7 @@ func (r *Reflector) Run() error {
 		return fmt.Errorf("listen UDP :%d: %w", r.cfg.Port, err)
 	}
 	r.conn = conn
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	log.Printf("YSF reflector %s listening on UDP port %d (client timeout %ds)",
 		r.cfg.Callsign, r.cfg.Port, r.cfg.Timeout)
