@@ -11,6 +11,8 @@ A [Yaesu System Fusion (YSF)](https://www.yaesu.com/jp/en/wires-x/index.php) UDP
 - Transmission watchdog — logs when a transmission starts and ends
 - Periodic status dumps every 2 minutes
 - Optional per-packet debug logging
+- HTTP dashboard showing connected nodes in real time
+- `/api/clients` JSON endpoint for programmatic access
 
 ## Requirements
 
@@ -29,6 +31,7 @@ Copy and edit `config_example.yaml` to `config.yaml`:
 ```yaml
 callsign: K8RON          # Your reflector callsign (max 10 characters)
 port: 42000              # UDP port to listen on (standard YSF port is 42000)
+http_port: 8080          # HTTP dashboard port
 timeout: 240             # Seconds before an idle client is disconnected
 debug: false             # Log every packet (verbose)
 
@@ -42,6 +45,7 @@ description: YSF Ref     # Short description (max 14 characters)
 |---------------|----------|---------|--------------------------------------------------|
 | `callsign`    | Yes      | —       | Reflector callsign, max 10 characters            |
 | `port`        | No       | `42000` | UDP port to listen on                            |
+| `http_port`   | No       | `8080`  | HTTP dashboard port                              |
 | `timeout`     | No       | `240`   | Client idle timeout in seconds                   |
 | `debug`       | No       | `false` | Log every packet                                 |
 | `id`          | No       | `0`     | Numeric ID included in YSFS status responses     |
@@ -55,6 +59,26 @@ description: YSF Ref     # Short description (max 14 characters)
 ```
 
 The `-config` flag defaults to `config.yaml` in the current directory.
+
+## Web dashboard
+
+When the reflector is running, a live dashboard is available at `http://localhost:8080` (or whatever `http_port` is set to). It lists all currently connected nodes with their callsign, IP address, and time since last heard.
+
+A JSON API is also available for programmatic access:
+
+```
+GET /api/clients
+```
+
+```json
+[
+  {
+    "callsign": "K8RON",
+    "addr": "1.2.3.4:42000",
+    "last_seen": "2026-04-10T17:00:00Z"
+  }
+]
+```
 
 ## Protocol overview
 
