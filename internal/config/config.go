@@ -15,6 +15,7 @@ type Config struct {
 	HTTPPort    int    `yaml:"http_port"`   // HTTP dashboard port, default 8080
 	Timeout     int    `yaml:"timeout"`     // Client idle timeout in seconds, default 240
 	Debug       bool   `yaml:"debug"`       // Log every packet
+	Parrot      bool   `yaml:"parrot"`      // Buffer transmissions and replay after TX ends
 	ID          uint32 `yaml:"id"`          // Numeric ID reported in YSFS status packets
 	Name        string `yaml:"name"`        // Reflector name, max 16 chars
 	Description string `yaml:"description"` // Short description, max 14 chars

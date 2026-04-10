@@ -24,6 +24,10 @@ type Reflector struct {
 	watchdogMu      sync.Mutex
 	watchdogTimer   *time.Timer
 	watchdogCurrent string // callsign currently on air, empty when idle
+
+	// Parrot mode — frames are buffered during TX and replayed after it ends.
+	parrotMu  sync.Mutex
+	parrotBuf [][]byte
 }
 
 // Clients returns a snapshot of all currently connected clients.
@@ -134,8 +138,9 @@ func (r *Reflector) handlePoll(pkt []byte, src *net.UDPAddr) {
 }
 
 // handleData processes a YSFD voice/data frame.
-// Relays the frame verbatim to every connected node except the sender,
-// and drives the transmission watchdog.
+// In normal mode the frame is relayed verbatim to every connected node except
+// the sender.  In parrot mode frames are buffered and replayed after the
+// transmission ends.
 func (r *Reflector) handleData(pkt []byte, src *net.UDPAddr) {
 	if len(pkt) < DataSize {
 		return
@@ -151,6 +156,15 @@ func (r *Reflector) handleData(pkt []byte, src *net.UDPAddr) {
 
 	if r.cfg.Debug {
 		log.Printf("data from %s (%s)", srcCallsign, src)
+	}
+
+	if r.cfg.Parrot {
+		frame := make([]byte, len(pkt))
+		copy(frame, pkt)
+		r.parrotMu.Lock()
+		r.parrotBuf = append(r.parrotBuf, frame)
+		r.parrotMu.Unlock()
+		return
 	}
 
 	for _, c := range r.clients.snapshot() {
@@ -211,7 +225,41 @@ func (r *Reflector) tickWatchdog(callsign string) {
 		r.watchdogMu.Unlock()
 
 		log.Printf("transmission ended: %s", cs)
+
+		if r.cfg.Parrot {
+			go r.parrotReplay()
+		}
 	})
+}
+
+// parrotReplay replays all buffered frames to every connected node.
+// It is run in a goroutine after each transmission ends when parrot mode is on.
+func (r *Reflector) parrotReplay() {
+	r.parrotMu.Lock()
+	frames := r.parrotBuf
+	r.parrotBuf = nil
+	r.parrotMu.Unlock()
+
+	if len(frames) == 0 {
+		return
+	}
+
+	log.Printf("parrot: replaying %d frame(s)", len(frames))
+
+	// Brief pause so the transmitting node has time to switch to RX.
+	time.Sleep(500 * time.Millisecond)
+
+	for _, frame := range frames {
+		for _, c := range r.clients.snapshot() {
+			if _, err := r.conn.WriteToUDP(frame, c.addr); err != nil && r.cfg.Debug {
+				log.Printf("parrot relay error to %s: %v", c.addr, err)
+			}
+		}
+		// ~100 ms matches the YSF frame interval to avoid receiver buffer overrun.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	log.Printf("parrot: replay complete")
 }
 
 // evictLoop periodically removes clients that have stopped polling.
