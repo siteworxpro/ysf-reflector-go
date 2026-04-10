@@ -1,0 +1,23 @@
+[Unit]
+Description=YSF Reflector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ysf-reflector
+Group=ysf-reflector
+ExecStart=/usr/local/bin/ysf-reflector -config /etc/ysf-reflector/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ysf-reflector
+
+# Hardening
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
