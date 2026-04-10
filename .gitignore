@@ -4,3 +4,5 @@
 ysf-reflector-go
 
 config.yaml
+
+dist/

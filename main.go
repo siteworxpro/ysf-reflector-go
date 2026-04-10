@@ -9,6 +9,8 @@ import (
 	"github.com/siteworxpro/ysf-reflector-go/internal/reflector"
 )
 
+var Version = "dev"
+
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "path to YAML configuration file")
 	flag.Parse()
@@ -18,6 +20,8 @@ func main() {
 		log.Printf("error loading config %q: %v", *cfgPath, err)
 		os.Exit(1)
 	}
+
+	log.Printf("Starting ysf-reflector-go version %s", Version)
 
 	r := reflector.New(cfg)
 	if err := r.Run(); err != nil {
