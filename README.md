@@ -18,6 +18,48 @@ A [Yaesu System Fusion (YSF)](https://www.yaesu.com/jp/en/wires-x/index.php) UDP
 
 - Go 1.21+
 
+## Docker
+
+Pre-built images are published to Docker Hub at [`siteworxpro/ysf-reflector-go`](https://hub.docker.com/r/siteworxpro/ysf-reflector-go).
+
+### Quick start
+
+Create a `config.yaml` (see [Configuration](#configuration) below), then run:
+
+```sh
+docker run -d \
+  --name ysf-reflector \
+  -v /path/to/config.yaml:/etc/ysf-reflector/config.yaml \
+  -p 42000:42000/udp \
+  -p 8080:8080 \
+  siteworxpro/ysf-reflector-go
+```
+
+### Docker Compose
+
+```yaml
+services:
+  ysf-reflector:
+    image: siteworxpro/ysf-reflector-go:latest
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/etc/ysf-reflector/config.yaml
+    ports:
+      - "42000:42000/udp"
+      - "8080:8080"
+```
+
+### Building the image locally
+
+```sh
+docker build -t ysf-reflector .
+
+# With a version label
+docker build --build-arg VERSION=1.2.3 -t ysf-reflector:1.2.3 .
+```
+
+The config file is expected at `/etc/ysf-reflector/config.yaml` inside the container.
+
 ## Building
 
 ```sh
