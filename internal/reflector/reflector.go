@@ -271,7 +271,8 @@ func (r *Reflector) tickWatchdog(callsign string) {
 
 	r.watchdogMu.Lock()
 	txStarting := r.watchdogCurrent == ""
-	if txStarting {
+	callsignChanged := !txStarting && r.watchdogCurrent != callsign
+	if txStarting || callsignChanged {
 		r.watchdogStarted = time.Now()
 		log.Printf("transmission started: %s", callsign)
 	}
@@ -280,6 +281,9 @@ func (r *Reflector) tickWatchdog(callsign string) {
 	if r.watchdogTimer != nil {
 		r.watchdogTimer.Reset(watchdogDuration)
 		r.watchdogMu.Unlock()
+		if callsignChanged && r.notifier != nil {
+			r.notifier.Notify()
+		}
 		return
 	}
 
@@ -316,7 +320,7 @@ func (r *Reflector) tickWatchdog(callsign string) {
 	})
 	r.watchdogMu.Unlock()
 
-	if txStarting && r.notifier != nil {
+	if (txStarting || callsignChanged) && r.notifier != nil {
 		r.notifier.Notify()
 	}
 }
