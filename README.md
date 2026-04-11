@@ -11,6 +11,7 @@ A [Yaesu System Fusion (YSF)](https://www.yaesu.com/jp/en/wires-x/index.php) UDP
 - Transmission watchdog — logs when a transmission starts and ends
 - Periodic status dumps every 2 minutes
 - Optional per-packet debug logging
+- Parrot mode — buffers each transmission and replays it to all connected nodes after TX ends
 - HTTP dashboard showing connected nodes in real time
 - `/api/clients` JSON endpoint for programmatic access
 
@@ -76,6 +77,7 @@ port: 42000              # UDP port to listen on (standard YSF port is 42000)
 http_port: 8080          # HTTP dashboard port
 timeout: 240             # Seconds before an idle client is disconnected
 debug: false             # Log every packet (verbose)
+parrot: false            # Buffer each transmission and replay it to all nodes after TX ends
 
 # Reported in YSFS status query responses
 id: 0                    # Numeric reflector ID (reported to querying nodes)
@@ -90,6 +92,7 @@ description: YSF Ref     # Short description (max 14 characters)
 | `http_port`   | No       | `8080`  | HTTP dashboard port                              |
 | `timeout`     | No       | `240`   | Client idle timeout in seconds                   |
 | `debug`       | No       | `false` | Log every packet                                 |
+| `parrot`      | No       | `false` | Buffer TX and replay to all nodes after TX ends  |
 | `id`          | No       | `0`     | Numeric ID included in YSFS status responses     |
 | `name`        | No       | —       | Reflector name, max 16 characters                |
 | `description` | No       | —       | Short description, max 14 characters             |
