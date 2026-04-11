@@ -6,3 +6,5 @@ ysf-reflector-go
 config.yaml
 
 dist/
+coverage.out
+*.test
