@@ -11,6 +11,28 @@ import (
 	"github.com/siteworxpro/ysf-reflector-go/internal/web"
 )
 
+// TransmissionEntry records a completed transmission.
+type TransmissionEntry struct {
+	Callsign  string
+	StartedAt time.Time
+	EndedAt   time.Time
+	Duration  time.Duration
+}
+
+// ActiveTransmitter describes the node currently on air.
+type ActiveTransmitter struct {
+	Callsign  string
+	StartedAt time.Time
+}
+
+const txLogMax = 50 // number of entries to retain in the ring buffer
+
+// Notifier is satisfied by *web.Server and allows the reflector to push state
+// updates to connected WebSocket clients without creating an import cycle.
+type Notifier interface {
+	Notify()
+}
+
 // Reflector is a YSF (Yaesu System Fusion) UDP reflector.
 // It listens for YSFP keepalive polls and YSFD voice/data frames, maintaining
 // a list of active nodes and relaying incoming frames to all other nodes.
@@ -19,11 +41,17 @@ type Reflector struct {
 	conn     *net.UDPConn
 	clients  *clientStore
 	callsign []byte // 10-byte padded
+	notifier Notifier
 
 	// Transmission watchdog — tracks the currently active transmitter.
 	watchdogMu      sync.Mutex
 	watchdogTimer   *time.Timer
-	watchdogCurrent string // callsign currently on air, empty when idle
+	watchdogCurrent string    // callsign currently on air, empty when idle
+	watchdogStarted time.Time // when the current transmission began
+
+	// Transmission log — ring buffer of completed transmissions.
+	txMu  sync.RWMutex
+	txLog []TransmissionEntry
 
 	// Parrot mode — frames are buffered during TX and replayed after it ends.
 	parrotMu  sync.Mutex
@@ -41,6 +69,32 @@ func (r *Reflector) Clients() []web.ClientInfo {
 			Addr:     c.addr.String(),
 			LastSeen: c.lastSeen,
 		})
+	}
+	return out
+}
+
+// ActiveTransmitter returns the node currently on air, or nil if the
+// reflector is idle.
+func (r *Reflector) ActiveTransmitter() *web.ActiveTransmitterInfo {
+	r.watchdogMu.Lock()
+	defer r.watchdogMu.Unlock()
+	if r.watchdogCurrent == "" {
+		return nil
+	}
+	return &web.ActiveTransmitterInfo{
+		Callsign:  r.watchdogCurrent,
+		StartedAt: r.watchdogStarted,
+	}
+}
+
+// TransmissionLog returns a copy of the completed-transmission ring buffer,
+// most-recent first.
+func (r *Reflector) TransmissionLog() []web.TransmissionEntryInfo {
+	r.txMu.RLock()
+	defer r.txMu.RUnlock()
+	out := make([]web.TransmissionEntryInfo, len(r.txLog))
+	for i, e := range r.txLog {
+		out[i] = web.TransmissionEntryInfo(e)
 	}
 	return out
 }
@@ -71,6 +125,7 @@ func (r *Reflector) Run() error {
 	if err != nil {
 		return fmt.Errorf("init web server: %w", err)
 	}
+	r.notifier = webSrv
 	go func() {
 		if err := webSrv.ListenAndServe(); err != nil {
 			log.Printf("web server error: %v", err)
@@ -108,6 +163,9 @@ func (r *Reflector) handle(pkt []byte, src *net.UDPAddr) {
 		r.handleStatus(src)
 	case magicOption, magicInfo:
 		// Silently ignored per reference implementation.
+		if r.cfg.Debug {
+			log.Printf("ignoring unsupported packet type %q from %s", pkt[0:4], src)
+		}
 	default:
 		if r.cfg.Debug {
 			log.Printf("unknown packet type %q from %s", pkt[0:4], src)
@@ -129,6 +187,10 @@ func (r *Reflector) handlePoll(pkt []byte, src *net.UDPAddr) {
 			callsign, src, r.clients.count())
 	} else if r.cfg.Debug {
 		log.Printf("poll: %s (%s)", callsign, src)
+	}
+
+	if r.notifier != nil {
+		r.notifier.Notify()
 	}
 
 	reply := buildPollReply(r.callsign)
@@ -185,6 +247,9 @@ func (r *Reflector) handleUnlink(pkt []byte, src *net.UDPAddr) {
 	callsign := parseUnlinkCallsign(pkt)
 	r.clients.remove(src.String())
 	log.Printf("unlinked: %s (%s) — %d node(s) online", callsign, src, r.clients.count())
+	if r.notifier != nil {
+		r.notifier.Notify()
+	}
 }
 
 // handleStatus responds to a YSFS status query with the reflector's ID, name,
@@ -205,31 +270,55 @@ func (r *Reflector) tickWatchdog(callsign string) {
 	const watchdogDuration = 1500 * time.Millisecond
 
 	r.watchdogMu.Lock()
-	defer r.watchdogMu.Unlock()
-
-	if r.watchdogCurrent == "" {
+	txStarting := r.watchdogCurrent == ""
+	if txStarting {
+		r.watchdogStarted = time.Now()
 		log.Printf("transmission started: %s", callsign)
 	}
 	r.watchdogCurrent = callsign
 
 	if r.watchdogTimer != nil {
 		r.watchdogTimer.Reset(watchdogDuration)
+		r.watchdogMu.Unlock()
 		return
 	}
 
 	r.watchdogTimer = time.AfterFunc(watchdogDuration, func() {
 		r.watchdogMu.Lock()
 		cs := r.watchdogCurrent
+		started := r.watchdogStarted
 		r.watchdogCurrent = ""
 		r.watchdogTimer = nil
 		r.watchdogMu.Unlock()
 
+		ended := time.Now()
 		log.Printf("transmission ended: %s", cs)
+
+		r.txMu.Lock()
+		r.txLog = append([]TransmissionEntry{{
+			Callsign:  cs,
+			StartedAt: started,
+			EndedAt:   ended,
+			Duration:  ended.Sub(started),
+		}}, r.txLog...)
+		if len(r.txLog) > txLogMax {
+			r.txLog = r.txLog[:txLogMax]
+		}
+		r.txMu.Unlock()
+
+		if r.notifier != nil {
+			r.notifier.Notify()
+		}
 
 		if r.cfg.Parrot {
 			go r.parrotReplay()
 		}
 	})
+	r.watchdogMu.Unlock()
+
+	if txStarting && r.notifier != nil {
+		r.notifier.Notify()
+	}
 }
 
 // parrotReplay replays all buffered frames to every connected node.
@@ -269,8 +358,12 @@ func (r *Reflector) evictLoop() {
 	timeout := time.Duration(r.cfg.Timeout) * time.Second
 
 	for range ticker.C {
-		for _, cs := range r.clients.evictExpired(timeout) {
+		evicted := r.clients.evictExpired(timeout)
+		for _, cs := range evicted {
 			log.Printf("disconnected (timeout): %s — %d node(s) online", cs, r.clients.count())
+		}
+		if len(evicted) > 0 && r.notifier != nil {
+			r.notifier.Notify()
 		}
 	}
 }
