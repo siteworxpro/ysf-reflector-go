@@ -185,12 +185,11 @@ func (r *Reflector) handlePoll(pkt []byte, src *net.UDPAddr) {
 	if isNew {
 		log.Printf("connected: %s (%s) — %d node(s) online",
 			callsign, src, r.clients.count())
+		if r.notifier != nil {
+			r.notifier.Notify()
+		}
 	} else if r.cfg.Debug {
 		log.Printf("poll: %s (%s)", callsign, src)
-	}
-
-	if r.notifier != nil {
-		r.notifier.Notify()
 	}
 
 	reply := buildPollReply(r.callsign)

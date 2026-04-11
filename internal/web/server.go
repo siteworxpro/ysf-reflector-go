@@ -215,6 +215,18 @@ func (s *Server) checkOrigin(allowed map[string]struct{}) func(*http.Request) bo
 	}
 }
 
+// heartbeat broadcasts the current reflector state at a fixed interval so that
+// last_seen timestamps remain fresh enough for clients to derive Active/Idle
+// status without the server needing to push on every keepalive poll.
+func (s *Server) heartbeat() {
+	const interval = 15 * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.Notify()
+	}
+}
+
 // Notify builds the current reflector state and broadcasts it to all connected
 // WebSocket clients. It is safe to call from any goroutine and never blocks.
 func (s *Server) Notify() {
@@ -231,7 +243,12 @@ func (s *Server) Notify() {
 }
 
 // ListenAndServe starts the HTTP server and blocks until it returns an error.
+// A background goroutine periodically broadcasts the current state so that
+// client-side "Active/Idle" badges (derived from last_seen) stay fresh without
+// requiring a push on every keepalive poll.
 func (s *Server) ListenAndServe() error {
+	go s.heartbeat()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.HandleFunc("/api/clients", s.handleAPIClients)
