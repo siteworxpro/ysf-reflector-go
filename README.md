@@ -17,6 +17,8 @@ multiple YSF nodes and hotspots together, relaying voice and data frames between
 - HTTP dashboard showing connected nodes in real time
 - `/api/clients` JSON endpoint for programmatic access
 
+![Dashboard screenshot](docs/dashboard.png)
+
 ## Requirements
 
 - Go 1.21+
