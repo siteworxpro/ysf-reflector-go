@@ -200,7 +200,9 @@ description: Test reflector
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := Load(f.Name())
 	if err != nil {
@@ -219,8 +221,12 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.WriteString(":::invalid yaml:::")
-	f.Close()
+	if _, err := f.WriteString(":::invalid yaml:::"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = Load(f.Name())
 	if err == nil {

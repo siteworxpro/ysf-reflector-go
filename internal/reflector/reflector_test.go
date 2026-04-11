@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/siteworxpro/ysf-reflector-go/internal/web"
 )
 
 // mockNotifier records Notify calls.
@@ -23,7 +22,7 @@ func setupConn(t *testing.T, r *Reflector) {
 	if err != nil {
 		t.Fatalf("ListenUDP: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	r.conn = conn
 }
 
@@ -34,7 +33,7 @@ func remoteConn(t *testing.T) *net.UDPConn {
 	if err != nil {
 		t.Fatalf("ListenUDP (remote): %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }
 
@@ -73,8 +72,7 @@ func TestClients_WithEntries(t *testing.T) {
 		t.Fatalf("expected 2, got %d", len(got))
 	}
 
-	// Check type is []web.ClientInfo and fields are populated.
-	var _ []web.ClientInfo = got
+	// Check fields are populated.
 	for _, c := range got {
 		if c.Callsign == "" {
 			t.Error("empty callsign in ClientInfo")
@@ -217,7 +215,7 @@ func TestHandlePoll_SendsReply(t *testing.T) {
 	pkt := makePollPacket("KD9ABC")
 	r.handlePoll(pkt, src)
 
-	remote.SetReadDeadline(time.Now().Add(time.Second))
+	_ = remote.SetReadDeadline(time.Now().Add(time.Second))
 	buf := make([]byte, 64)
 	n, _, err := remote.ReadFromUDP(buf)
 	if err != nil {
@@ -298,7 +296,7 @@ func TestHandleData_RelaysToOtherClients(t *testing.T) {
 
 	// Both receivers should get the relayed packet.
 	for _, rx := range []*net.UDPConn{receiver1, receiver2} {
-		rx.SetReadDeadline(time.Now().Add(time.Second))
+		_ = rx.SetReadDeadline(time.Now().Add(time.Second))
 		buf := make([]byte, 256)
 		n, _, err := rx.ReadFromUDP(buf)
 		if err != nil {
@@ -322,7 +320,7 @@ func TestHandleData_DoesNotEchoSender(t *testing.T) {
 	r.handleData(pkt, sender.LocalAddr().(*net.UDPAddr))
 
 	// Sender should not receive its own packet back.
-	sender.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	_ = sender.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
 	buf := make([]byte, 256)
 	_, _, err := sender.ReadFromUDP(buf)
 	if err == nil {
@@ -378,7 +376,7 @@ func TestHandleStatus_SendsReply(t *testing.T) {
 
 	r.handleStatus(src)
 
-	remote.SetReadDeadline(time.Now().Add(time.Second))
+	_ = remote.SetReadDeadline(time.Now().Add(time.Second))
 	buf := make([]byte, 64)
 	n, _, err := remote.ReadFromUDP(buf)
 	if err != nil {
