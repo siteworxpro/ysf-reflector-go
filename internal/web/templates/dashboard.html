@@ -308,7 +308,7 @@
     }
 
     function duration(sec) {
-      if (sec < 1)  return '<1s';
+      if (sec < 1)  return '&lt;1s';
       if (sec < 60) return Math.round(sec) + 's';
       const m = Math.floor(sec / 60);
       const s = Math.round(sec % 60);
