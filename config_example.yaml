@@ -9,3 +9,12 @@ parrot: false            # Buffer each transmission and replay it to all nodes a
 id: 0                    # Numeric reflector ID (reported to querying nodes)
 name: A1234 Reflector    # Reflector name (max 16 characters)
 description: YSF Ref     # Short description (max 14 characters)
+
+# WebSocket origin allowlist (optional).
+# When omitted or empty the dashboard enforces same-origin — only browsers
+# that loaded the page from the same host:port may open a WebSocket connection.
+# Add entries here only when the dashboard is served behind a reverse proxy or
+# accessed from a different hostname/port than the reflector itself.
+#allowed_origins:
+#  - https://dashboard.example.com
+#  - http://192.168.1.10:8080

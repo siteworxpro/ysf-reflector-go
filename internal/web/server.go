@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -146,18 +147,13 @@ func (c *wsClient) readPump(h *hub) {
 	}
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  256,
-	WriteBufferSize: 4096,
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
-
 // Server serves the dashboard and API endpoints.
 type Server struct {
 	cfg      *config.Config
 	provider ClientProvider
 	tmpl     *template.Template
 	hub      *hub
+	upgrader websocket.Upgrader
 }
 
 // New creates a Server. It parses the embedded dashboard template at startup so
@@ -169,7 +165,54 @@ func New(cfg *config.Config, provider ClientProvider) (*Server, error) {
 	}
 	h := newHub()
 	go h.run()
-	return &Server{cfg: cfg, provider: provider, tmpl: tmpl, hub: h}, nil
+
+	// Build the allowlist set from config (case-normalised scheme+host).
+	allowed := make(map[string]struct{}, len(cfg.AllowedOrigins))
+	for _, o := range cfg.AllowedOrigins {
+		if u, err := url.Parse(o); err == nil {
+			allowed[u.Scheme+"://"+u.Host] = struct{}{}
+		}
+	}
+
+	s := &Server{
+		cfg:      cfg,
+		provider: provider,
+		tmpl:     tmpl,
+		hub:      h,
+	}
+	s.upgrader = websocket.Upgrader{
+		ReadBufferSize:  256,
+		WriteBufferSize: 4096,
+		CheckOrigin:     s.checkOrigin(allowed),
+	}
+	return s, nil
+}
+
+// checkOrigin returns a CheckOrigin function that enforces same-origin policy.
+// If the caller configured an explicit allowlist it is consulted first; otherwise
+// the Origin header must match the Host header of the incoming request.
+// Requests without an Origin header (e.g. native clients, curl) are permitted.
+func (s *Server) checkOrigin(allowed map[string]struct{}) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			// Non-browser clients do not send Origin; allow them.
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+
+		// Explicit allowlist takes priority when configured.
+		if len(allowed) > 0 {
+			_, ok := allowed[u.Scheme+"://"+u.Host]
+			return ok
+		}
+
+		// Default: same-origin — the Origin host must equal the Host header.
+		return u.Host == r.Host
+	}
 }
 
 // Notify builds the current reflector state and broadcasts it to all connected
@@ -237,7 +280,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("ws upgrade: %v", err)
 		return
