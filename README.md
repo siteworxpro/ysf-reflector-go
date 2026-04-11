@@ -86,19 +86,25 @@ parrot: false            # Buffer each transmission and replay it to all nodes a
 id: 0                    # Numeric reflector ID (reported to querying nodes)
 name: K8RON Reflector    # Reflector name (max 16 characters)
 description: YSF Ref     # Short description (max 14 characters)
+
+# WebSocket origin allowlist (optional — omit for same-origin enforcement)
+#allowed_origins:
+#  - https://dashboard.example.com
+#  - http://192.168.1.10:8080
 ```
 
-| Field         | Required | Default | Description                                     |
-|---------------|----------|---------|-------------------------------------------------|
-| `callsign`    | Yes      | —       | Reflector callsign, max 10 characters           |
-| `port`        | No       | `42000` | UDP port to listen on                           |
-| `http_port`   | No       | `8080`  | HTTP dashboard port                             |
-| `timeout`     | No       | `240`   | Client idle timeout in seconds                  |
-| `debug`       | No       | `false` | Log every packet                                |
-| `parrot`      | No       | `false` | Buffer TX and replay to all nodes after TX ends |
-| `id`          | No       | `0`     | Numeric ID included in YSFS status responses    |
-| `name`        | No       | —       | Reflector name, max 16 characters               |
-| `description` | No       | —       | Short description, max 14 characters            |
+| Field              | Required | Default | Description                                                                        |
+|--------------------|----------|---------|------------------------------------------------------------------------------------|
+| `callsign`         | Yes      | —       | Reflector callsign, max 10 characters                                              |
+| `port`             | No       | `42000` | UDP port to listen on                                                              |
+| `http_port`        | No       | `8080`  | HTTP dashboard port                                                                |
+| `timeout`          | No       | `240`   | Client idle timeout in seconds                                                     |
+| `debug`            | No       | `false` | Log every packet                                                                   |
+| `parrot`           | No       | `false` | Buffer TX and replay to all nodes after TX ends                                    |
+| `id`               | No       | `0`     | Numeric ID included in YSFS status responses                                       |
+| `name`             | No       | —       | Reflector name, max 16 characters                                                  |
+| `description`      | No       | —       | Short description, max 14 characters                                               |
+| `allowed_origins`  | No       | —       | WebSocket origin allowlist (list of `scheme://host[:port]`); see [Web dashboard](#web-dashboard) |
 
 ## Running
 
@@ -111,7 +117,25 @@ The `-config` flag defaults to `config.yaml` in the current directory.
 ## Web dashboard
 
 When the reflector is running, a live dashboard is available at `http://localhost:8080` (or whatever `http_port` is set
-to). It lists all currently connected nodes with their callsign, IP address, and time since last heard.
+to). It lists all currently connected nodes with their callsign, IP address, and time since last heard. The dashboard
+uses a WebSocket connection to receive live updates.
+
+### WebSocket origin policy
+
+By default the server enforces **same-origin** — only a browser that loaded the dashboard page from the same
+`host:port` may open a WebSocket connection. This prevents cross-site WebSocket hijacking from third-party pages.
+
+If the dashboard is served behind a reverse proxy or accessed from a different hostname, add the trusted origins to
+`allowed_origins` in `config.yaml`:
+
+```yaml
+allowed_origins:
+  - https://dashboard.example.com
+  - http://192.168.1.10:8080
+```
+
+When `allowed_origins` is set, only those exact origins are permitted; the same-origin fallback is bypassed.
+Non-browser clients (e.g. `curl`, native apps) that omit the `Origin` header are always allowed through.
 
 A JSON API is also available for programmatic access:
 

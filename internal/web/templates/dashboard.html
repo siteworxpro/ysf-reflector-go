@@ -173,6 +173,38 @@
       margin-top: 10px;
     }
     .refresh-info span { color: var(--text); }
+
+    .tx-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      margin-bottom: 24px;
+    }
+    .tx-banner.active { border-color: var(--green); background: rgba(62,207,142,0.07); }
+    .tx-banner.idle   { border-color: var(--border); }
+
+    .tx-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .tx-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .tx-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .tx-callsign { font-size: 20px; font-weight: 700; color: var(--green); letter-spacing: 0.06em; }
+    .tx-since { font-size: 12px; color: var(--muted); margin-left: auto; }
   </style>
 </head>
 <body>
@@ -185,7 +217,7 @@
         {{if .Description}}{{.Description}}{{end}}
       </div>
     </div>
-    <div class="status-dot" id="statusDot" title="API connection status"></div>
+    <div class="status-dot" id="statusDot" title="WebSocket connection status"></div>
   </header>
 
   <main>
@@ -195,11 +227,27 @@
         <div class="value" id="nodeCount">—</div>
       </div>
       <div class="stat-card">
+        <div class="label">Transmissions Today</div>
+        <div class="value" id="txCount">—</div>
+      </div>
+      <div class="stat-card">
         <div class="label">Reflector Name</div>
         <div class="value" style="font-size:18px; padding-top:4px;">{{.Name}}</div>
       </div>
     </div>
 
+    <!-- Active Transmitter -->
+    <div class="section-title">Active Transmitter</div>
+    <div class="tx-banner idle" id="txBanner">
+      <div class="tx-dot" id="txDot"></div>
+      <div>
+        <div class="tx-label">On Air</div>
+        <div class="tx-callsign" id="txCallsign">—</div>
+      </div>
+      <div class="tx-since" id="txSince"></div>
+    </div>
+
+    <!-- Connected Clients -->
     <div class="section-title">Connected Clients</div>
     <table>
       <thead>
@@ -211,17 +259,42 @@
         </tr>
       </thead>
       <tbody id="clientTable">
-        <tr><td colspan="4" class="empty">Loading…</td></tr>
+        <tr><td colspan="4" class="empty">Connecting…</td></tr>
       </tbody>
     </table>
-    <div class="refresh-info">Auto-refreshes every 5s &nbsp;·&nbsp; Last update: <span id="lastUpdate">—</span></div>
+
+    <!-- Transmission Log -->
+    <div class="section-title" style="margin-top:28px;">Transmission Log</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Callsign</th>
+          <th>Started</th>
+          <th>Ended</th>
+          <th>Duration</th>
+        </tr>
+      </thead>
+      <tbody id="txTable">
+        <tr><td colspan="4" class="empty">No transmissions recorded</td></tr>
+      </tbody>
+    </table>
+
+    <div class="refresh-info">Live via WebSocket &nbsp;·&nbsp; Last update: <span id="lastUpdate">—</span></div>
   </main>
 
   <script>
-    const dot = document.getElementById('statusDot');
-    const tbody = document.getElementById('clientTable');
-    const nodeCount = document.getElementById('nodeCount');
+    const dot        = document.getElementById('statusDot');
+    const tbody      = document.getElementById('clientTable');
+    const txTbody    = document.getElementById('txTable');
+    const nodeCount  = document.getElementById('nodeCount');
+    const txCount    = document.getElementById('txCount');
     const lastUpdate = document.getElementById('lastUpdate');
+    const txBanner   = document.getElementById('txBanner');
+    const txDot      = document.getElementById('txDot');
+    const txCallsign = document.getElementById('txCallsign');
+    const txSince    = document.getElementById('txSince');
+
+    let txStartedAt = null; // Date object of current TX start, or null
 
     function ago(isoStr) {
       const d = new Date(isoStr);
@@ -234,22 +307,33 @@
       return hrs + 'h ' + (mins % 60) + 'm ago';
     }
 
+    function duration(sec) {
+      if (sec < 1)  return '&lt;1s';
+      if (sec < 60) return Math.round(sec) + 's';
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60);
+      return m + 'm ' + s + 's';
+    }
+
     function statusBadge(isoStr) {
       const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
       if (secs < 30)  return '<span class="badge badge-green">Active</span>';
       return '<span class="badge badge-yellow">Idle</span>';
     }
 
-    function render(clients) {
+    function esc(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderClients(clients) {
       nodeCount.textContent = clients.length;
       if (clients.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="empty">No nodes connected</td></tr>';
         return;
       }
-      // Sort by callsign
       clients.sort((a, b) => a.callsign.localeCompare(b.callsign));
       tbody.innerHTML = clients.map(c => `
-        <tr>
+        <tr data-ts="${esc(c.last_seen)}">
           <td class="callsign">${esc(c.callsign)}</td>
           <td class="addr">${esc(c.addr)}</td>
           <td>${statusBadge(c.last_seen)}</td>
@@ -260,33 +344,88 @@
         </tr>`).join('');
     }
 
-    function esc(s) {
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    async function fetchClients() {
-      try {
-        const res = await fetch('/api/clients');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        render(data);
-        dot.classList.remove('stale');
-        lastUpdate.textContent = new Date().toLocaleTimeString();
-      } catch (e) {
-        dot.classList.add('stale');
-        console.error('fetch failed:', e);
+    function renderTransmitter(tx) {
+      if (tx && tx.on_air) {
+        txStartedAt = new Date(tx.started_at);
+        txBanner.className = 'tx-banner active';
+        txDot.className = 'tx-dot on';
+        txCallsign.textContent = tx.callsign;
+        txSince.textContent = 'since ' + txStartedAt.toLocaleTimeString();
+      } else {
+        txStartedAt = null;
+        txBanner.className = 'tx-banner idle';
+        txDot.className = 'tx-dot';
+        txCallsign.textContent = '—';
+        txSince.textContent = '';
       }
     }
 
-    fetchClients();
-    setInterval(fetchClients, 5000);
+    function renderTransmissions(entries) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayCount = entries.filter(e => new Date(e.started_at) >= today).length;
+      txCount.textContent = todayCount;
 
-    // Refresh relative times every second without re-fetching
+      if (entries.length === 0) {
+        txTbody.innerHTML = '<tr><td colspan="4" class="empty">No transmissions recorded</td></tr>';
+        return;
+      }
+      txTbody.innerHTML = entries.map(e => `
+        <tr>
+          <td class="callsign">${esc(e.callsign)}</td>
+          <td><div>${new Date(e.started_at).toLocaleTimeString()}</div><div class="last-seen-ts">${ago(e.started_at)}</div></td>
+          <td>${new Date(e.ended_at).toLocaleTimeString()}</td>
+          <td>${duration(e.duration_sec)}</td>
+        </tr>`).join('');
+    }
+
+    // WebSocket connection with exponential-backoff reconnect.
+    let reconnectDelay = 1000;
+    const maxReconnectDelay = 30000;
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(proto + '//' + location.host + '/ws');
+
+      ws.onopen = () => {
+        dot.classList.remove('stale');
+        reconnectDelay = 1000;
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const state = JSON.parse(evt.data);
+          renderClients(state.clients || []);
+          renderTransmitter(state.transmitter);
+          renderTransmissions(state.transmissions || []);
+          lastUpdate.textContent = new Date().toLocaleTimeString();
+        } catch (e) {
+          console.error('ws parse error:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        dot.classList.add('stale');
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
+
+    // Refresh relative times and live TX duration every second without re-fetching.
     setInterval(() => {
-      document.querySelectorAll('tbody tr[data-ts]').forEach(tr => {
+      document.querySelectorAll('#clientTable tr[data-ts]').forEach(tr => {
         const ts = tr.getAttribute('data-ts');
         tr.querySelector('.last-seen').textContent = ago(ts);
       });
+      if (txStartedAt) {
+        txSince.textContent = 'since ' + txStartedAt.toLocaleTimeString()
+          + ' (' + duration((Date.now() - txStartedAt.getTime()) / 1000) + ')';
+      }
     }, 1000);
   </script>
 </body>
