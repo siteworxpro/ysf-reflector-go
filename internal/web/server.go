@@ -99,7 +99,7 @@ func (c *wsClient) writePump(h *hub) {
 	ticker := time.NewTicker(pingInterval)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	for {
@@ -127,7 +127,7 @@ func (c *wsClient) writePump(h *hub) {
 func (c *wsClient) readPump(h *hub) {
 	defer func() {
 		h.unregister <- c
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	const maxMsg = 512
@@ -149,7 +149,7 @@ func (c *wsClient) readPump(h *hub) {
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  256,
 	WriteBufferSize: 4096,
-	CheckOrigin:    func(r *http.Request) bool { return true },
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 // Server serves the dashboard and API endpoints.
