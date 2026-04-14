@@ -67,7 +67,7 @@ func (b *Bridge) connect() {
 		return
 	}
 
-	remoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", b.cfg.Host, b.cfg.Port))
+	remoteAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(b.cfg.Host, fmt.Sprintf("%d", b.cfg.Port)))
 	if err != nil {
 		b.mu.Unlock()
 		log.Printf("bridge %q: resolve %s:%d: %v", b.cfg.Name, b.cfg.Host, b.cfg.Port, err)
