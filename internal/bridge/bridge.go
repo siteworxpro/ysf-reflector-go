@@ -107,6 +107,7 @@ func (b *Bridge) disconnect() {
 	remoteAddr := b.remoteAddr
 	stopCh := b.stopCh
 	b.connected = false
+	b.connectedAt = time.Time{}
 	b.conn = nil
 	b.remoteAddr = nil
 	b.mu.Unlock()
