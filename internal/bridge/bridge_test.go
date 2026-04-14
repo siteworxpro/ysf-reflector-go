@@ -161,7 +161,7 @@ func TestBridge_ConnectDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen remote: %v", err)
 	}
-	defer remote.Close()
+	t.Cleanup(func() { _ = remote.Close() })
 
 	cfg := makeBridgeCfg("test", "127.0.0.1", remote.LocalAddr().(*net.UDPAddr).Port, false)
 	b := newBridge(cfg, defaultCallsign(), inj)
@@ -205,7 +205,7 @@ func TestBridge_InjectOnYSFD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen remote: %v", err)
 	}
-	defer remote.Close()
+	t.Cleanup(func() { _ = remote.Close() })
 
 	cfg := makeBridgeCfg("inject-test", "127.0.0.1", remote.LocalAddr().(*net.UDPAddr).Port, false)
 	b := newBridge(cfg, defaultCallsign(), inj)
@@ -246,7 +246,7 @@ func TestBridge_NoInjectOnNonYSFD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen remote: %v", err)
 	}
-	defer remote.Close()
+	t.Cleanup(func() { _ = remote.Close() })
 
 	cfg := makeBridgeCfg("noninject-test", "127.0.0.1", remote.LocalAddr().(*net.UDPAddr).Port, false)
 	b := newBridge(cfg, defaultCallsign(), inj)
@@ -316,8 +316,8 @@ func TestManager_RelayToRemote_SkipsSourceBridge(t *testing.T) {
 	// Set up two "remote reflectors".
 	remoteA, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	remoteB, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	defer remoteA.Close()
-	defer remoteB.Close()
+	t.Cleanup(func() { _ = remoteA.Close() })
+	t.Cleanup(func() { _ = remoteB.Close() })
 
 	portA := remoteA.LocalAddr().(*net.UDPAddr).Port
 	portB := remoteB.LocalAddr().(*net.UDPAddr).Port
@@ -362,7 +362,7 @@ func TestManager_RelayToRemote_SkipsSourceBridge(t *testing.T) {
 
 func TestManager_Bridges_ReturnsStatus(t *testing.T) {
 	remote, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	defer remote.Close()
+	t.Cleanup(func() { _ = remote.Close() })
 	port := remote.LocalAddr().(*net.UDPAddr).Port
 
 	cfgs := []config.BridgeConfig{
@@ -402,7 +402,7 @@ func TestManager_Bridges_ReturnsStatus(t *testing.T) {
 func TestManager_CronSchedule(t *testing.T) {
 	inj := &mockInjector{}
 	remote, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	defer remote.Close()
+	t.Cleanup(func() { _ = remote.Close() })
 	port := remote.LocalAddr().(*net.UDPAddr).Port
 
 	cfgs := []config.BridgeConfig{

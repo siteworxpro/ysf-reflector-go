@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/siteworxpro/ysf-reflector-go/internal/config"
@@ -14,7 +13,6 @@ import (
 // Manager manages all configured bridges and their cron-based connect/disconnect schedules.
 type Manager struct {
 	bridges []*Bridge
-	mu      sync.RWMutex
 	stopCh  chan struct{}
 }
 
