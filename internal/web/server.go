@@ -38,6 +38,21 @@ type TransmissionEntryInfo struct {
 	Duration  time.Duration
 }
 
+// BridgeInfo holds the exported view of a configured bridge connection.
+type BridgeInfo struct {
+	Name        string    `json:"name"`
+	Host        string    `json:"host"`
+	Port        int       `json:"port"`
+	Connected   bool      `json:"connected"`
+	ConnectedAt time.Time `json:"connected_at,omitempty"`
+	Schedule    string    `json:"schedule,omitempty"`
+}
+
+// BridgeProvider is optionally implemented to supply bridge status to the dashboard.
+type BridgeProvider interface {
+	Bridges() []BridgeInfo
+}
+
 // ClientProvider is implemented by the Reflector to supply live client snapshots.
 type ClientProvider interface {
 	Clients() []ClientInfo
@@ -149,11 +164,12 @@ func (c *wsClient) readPump(h *hub) {
 
 // Server serves the dashboard and API endpoints.
 type Server struct {
-	cfg      *config.Config
-	provider ClientProvider
-	tmpl     *template.Template
-	hub      *hub
-	upgrader websocket.Upgrader
+	cfg            *config.Config
+	provider       ClientProvider
+	bridgeProvider BridgeProvider // optional
+	tmpl           *template.Template
+	hub            *hub
+	upgrader       websocket.Upgrader
 }
 
 // New creates a Server. It parses the embedded dashboard template at startup so
@@ -242,6 +258,12 @@ func (s *Server) Notify() {
 	}
 }
 
+// SetBridgeProvider registers an optional bridge status provider.
+// Must be called before ListenAndServe.
+func (s *Server) SetBridgeProvider(bp BridgeProvider) {
+	s.bridgeProvider = bp
+}
+
 // ListenAndServe starts the HTTP server and blocks until it returns an error.
 // A background goroutine periodically broadcasts the current state so that
 // client-side "Active/Idle" badges (derived from last_seen) stay fresh without
@@ -254,6 +276,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/api/clients", s.handleAPIClients)
 	mux.HandleFunc("/api/transmitter", s.handleAPITransmitter)
 	mux.HandleFunc("/api/transmissions", s.handleAPITransmissions)
+	mux.HandleFunc("/api/bridges", s.handleAPIBridges)
 	mux.HandleFunc("/", s.handleDashboard)
 
 	addr := fmt.Sprintf(":%d", s.cfg.HTTPPort)
@@ -323,6 +346,7 @@ type stateMessage struct {
 	Clients       []clientJSON       `json:"clients"`
 	Transmitter   transmitterJSON    `json:"transmitter"`
 	Transmissions []transmissionJSON `json:"transmissions"`
+	Bridges       []BridgeInfo       `json:"bridges"`
 }
 
 func (s *Server) buildStateMessage() ([]byte, error) {
@@ -348,10 +372,19 @@ func (s *Server) buildStateMessage() ([]byte, error) {
 		})
 	}
 
+	var bridgesOut []BridgeInfo
+	if s.bridgeProvider != nil {
+		bridgesOut = s.bridgeProvider.Bridges()
+	}
+	if bridgesOut == nil {
+		bridgesOut = []BridgeInfo{}
+	}
+
 	return json.Marshal(stateMessage{
 		Clients:       clientsOut,
 		Transmitter:   txOut,
 		Transmissions: txLogOut,
+		Bridges:       bridgesOut,
 	})
 }
 
@@ -418,5 +451,20 @@ func (s *Server) handleAPITransmissions(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "no-store")
 	if err := json.NewEncoder(w).Encode(out); err != nil {
 		log.Printf("api/transmissions encode error: %v", err)
+	}
+}
+
+func (s *Server) handleAPIBridges(w http.ResponseWriter, _ *http.Request) {
+	var out []BridgeInfo
+	if s.bridgeProvider != nil {
+		out = s.bridgeProvider.Bridges()
+	}
+	if out == nil {
+		out = []BridgeInfo{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		log.Printf("api/bridges encode error: %v", err)
 	}
 }

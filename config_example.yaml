@@ -18,3 +18,36 @@ description: YSF Ref     # Short description (max 14 characters)
 #allowed_origins:
 #  - https://dashboard.example.com
 #  - http://192.168.1.10:8080
+
+# Bridges: automated connections to other YSF reflectors.
+# Each bridge maintains a persistent UDP link, sending keepalive polls every 5s.
+# Frames from local nodes are forwarded to the remote reflector and vice versa.
+#
+# Schedule fields accept standard 5-field cron expressions:
+#   minute hour day-of-month month day-of-week
+#   Supports: * N N-M */N N-M/N N,M,...
+#
+#bridges:
+#  # Always-on bridge — connects at startup and stays connected.
+#  - name: K9XYZ Reflector
+#    host: ysf.example.com
+#    port: 42000
+#    always_on: true
+#    enabled: true
+#
+#  # Scheduled bridge — connect at 08:00, disconnect at 22:00, every day.
+#  - name: Night Net Link
+#    host: 192.0.2.10
+#    port: 42000
+#    callsign: K8BRIDGE    # override callsign sent to remote (optional)
+#    connect:    "0 8 * * *"
+#    disconnect: "0 22 * * *"
+#    enabled: true
+#
+#  # Weekday-only bridge — connect Mon–Fri at 09:00, disconnect at 17:00.
+#  - name: Weekday Net
+#    host: ysf2.example.com
+#    port: 42000
+#    connect:    "0 9 * * 1-5"
+#    disconnect: "0 17 * * 1-5"
+#    enabled: true
