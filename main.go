@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/siteworxpro/ysf-reflector-go/internal/bridge"
 	"github.com/siteworxpro/ysf-reflector-go/internal/config"
 	"github.com/siteworxpro/ysf-reflector-go/internal/reflector"
 )
@@ -24,6 +25,15 @@ func main() {
 	log.Printf("Starting ysf-reflector-go version %s", Version)
 
 	r := reflector.New(cfg)
+
+	if len(cfg.Bridges) > 0 {
+		bm := bridge.NewManager(cfg.Bridges, cfg.PaddedCallsign(), r)
+		r.SetBridgeRelayer(bm)
+		r.SetBridgeProvider(bm)
+		bm.Start()
+		defer bm.Stop()
+	}
+
 	if err := r.Run(); err != nil {
 		log.Printf("reflector error: %v", err)
 		os.Exit(1)

@@ -33,15 +33,23 @@ type Notifier interface {
 	Notify()
 }
 
+// BridgeRelayer receives local YSFD frames for forwarding to remote reflectors.
+// Implemented by *bridge.Manager.
+type BridgeRelayer interface {
+	RelayToRemote(src *net.UDPAddr, data []byte)
+}
+
 // Reflector is a YSF (Yaesu System Fusion) UDP reflector.
 // It listens for YSFP keepalive polls and YSFD voice/data frames, maintaining
 // a list of active nodes and relaying incoming frames to all other nodes.
 type Reflector struct {
-	cfg      *config.Config
-	conn     *net.UDPConn
-	clients  *clientStore
-	callsign []byte // 10-byte padded
-	notifier Notifier
+	cfg            *config.Config
+	conn           *net.UDPConn
+	clients        *clientStore
+	callsign       []byte // 10-byte padded
+	notifier       Notifier
+	bridgeRelayer  BridgeRelayer   // optional: forwards local frames to remote reflectors
+	bridgeProvider web.BridgeProvider // optional: supplies bridge status to the web dashboard
 
 	// Transmission watchdog — tracks the currently active transmitter.
 	watchdogMu      sync.Mutex
@@ -108,6 +116,55 @@ func New(cfg *config.Config) *Reflector {
 	}
 }
 
+// SetBridgeRelayer registers the bridge manager so local YSFD frames are also
+// forwarded to connected remote reflectors. Must be called before Run.
+func (r *Reflector) SetBridgeRelayer(br BridgeRelayer) {
+	r.bridgeRelayer = br
+}
+
+// SetBridgeProvider registers an optional bridge status provider that is
+// passed to the web dashboard. Must be called before Run.
+func (r *Reflector) SetBridgeProvider(bp web.BridgeProvider) {
+	r.bridgeProvider = bp
+}
+
+// InjectFromBridge handles a YSFD frame received from a bridged remote reflector.
+// It relays the frame to all locally connected nodes without registering the remote
+// reflector as a local client.
+func (r *Reflector) InjectFromBridge(data []byte, from *net.UDPAddr) {
+	if len(data) < DataSize || string(data[0:4]) != magicData {
+		return
+	}
+	srcCallsign := parseDataSrcCallsign(data)
+	r.injectDataFromBridge(data, srcCallsign)
+}
+
+// injectDataFromBridge relays bridge-originated YSFD to local clients and ticks
+// the transmission watchdog. Unlike handleData it does not upsert the sender into
+// the local client store.
+func (r *Reflector) injectDataFromBridge(data []byte, srcCallsign string) {
+	r.tickWatchdog(srcCallsign)
+
+	if r.cfg.Debug {
+		log.Printf("bridge data: %s", srcCallsign)
+	}
+
+	if r.cfg.Parrot {
+		frame := make([]byte, len(data))
+		copy(frame, data)
+		r.parrotMu.Lock()
+		r.parrotBuf = append(r.parrotBuf, frame)
+		r.parrotMu.Unlock()
+		return
+	}
+
+	for _, c := range r.clients.snapshot() {
+		if _, err := r.conn.WriteToUDP(data, c.addr); err != nil && r.cfg.Debug {
+			log.Printf("bridge→local relay error to %s: %v", c.addr, err)
+		}
+	}
+}
+
 // Run starts the reflector, blocking until an unrecoverable error occurs.
 func (r *Reflector) Run() error {
 	addr := &net.UDPAddr{Port: r.cfg.Port}
@@ -124,6 +181,9 @@ func (r *Reflector) Run() error {
 	webSrv, err := web.New(r.cfg, r)
 	if err != nil {
 		return fmt.Errorf("init web server: %w", err)
+	}
+	if r.bridgeProvider != nil {
+		webSrv.SetBridgeProvider(r.bridgeProvider)
 	}
 	r.notifier = webSrv
 	go func() {
@@ -235,6 +295,11 @@ func (r *Reflector) handleData(pkt []byte, src *net.UDPAddr) {
 		if _, err := r.conn.WriteToUDP(pkt, c.addr); err != nil && r.cfg.Debug {
 			log.Printf("relay error to %s: %v", c.addr, err)
 		}
+	}
+
+	// Forward to bridged remote reflectors.
+	if r.bridgeRelayer != nil {
+		r.bridgeRelayer.RelayToRemote(src, pkt)
 	}
 }
 
