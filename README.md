@@ -16,6 +16,7 @@ multiple YSF nodes and hotspots together, relaying voice and data frames between
 - Parrot mode — buffers each transmission and replays it to all connected nodes after TX ends
 - HTTP dashboard showing connected nodes in real time
 - `/api/clients` JSON endpoint for programmatic access
+- Bridge system — link to remote YSF reflectors with always-on or cron-scheduled connect/disconnect
 
 ![Dashboard screenshot](docs/dashboard.png)
 
@@ -107,6 +108,69 @@ description: YSF Ref     # Short description (max 14 characters)
 | `name`             | No       | —       | Reflector name, max 16 characters                                                  |
 | `description`      | No       | —       | Short description, max 14 characters                                               |
 | `allowed_origins`  | No       | —       | WebSocket origin allowlist (list of `scheme://host[:port]`); see [Web dashboard](#web-dashboard) |
+| `bridges`          | No       | —       | List of outbound bridges to remote YSF reflectors; see [Bridge system](#bridge-system) |
+
+## Bridge system
+
+Bridges let this reflector connect to one or more remote YSF reflectors. Frames from local nodes are forwarded to the remote, and frames received from the remote are injected back into the local reflector and relayed to all connected nodes.
+
+Each bridge can operate in two modes:
+
+- **Always-on** — connects at startup and stays connected indefinitely.
+- **Scheduled** — connects and disconnects on cron expressions (standard 5-field format).
+
+```yaml
+bridges:
+  # Always-on bridge — connects at startup and stays connected.
+  - name: K9XYZ Reflector
+    host: ysf.example.com
+    port: 42000
+    always_on: true
+    enabled: true
+
+  # Scheduled bridge — connect at 08:00, disconnect at 22:00, every day.
+  - name: Night Net Link
+    host: 192.0.2.10
+    port: 42000
+    callsign: K8BRIDGE    # override callsign sent to remote (optional)
+    connect:    "0 8 * * *"
+    disconnect: "0 22 * * *"
+    enabled: true
+
+  # Weekday-only bridge — connect Mon–Fri at 09:00, disconnect at 17:00.
+  - name: Weekday Net
+    host: ysf2.example.com
+    port: 42000
+    connect:    "0 9 * * 1-5"
+    disconnect: "0 17 * * 1-5"
+    enabled: true
+```
+
+### Bridge config fields
+
+| Field        | Required | Default | Description                                                        |
+|--------------|----------|---------|--------------------------------------------------------------------|
+| `name`       | Yes      | —       | Human-readable label for logs                                      |
+| `host`       | Yes      | —       | Remote reflector hostname or IP                                    |
+| `port`       | No       | `42000` | Remote reflector UDP port                                          |
+| `callsign`   | No       | —       | Override callsign sent to remote (max 10 chars); defaults to reflector callsign |
+| `always_on`  | No       | `false` | Connect at startup and stay connected                              |
+| `connect`    | No       | —       | 5-field cron expression controlling when to connect                |
+| `disconnect` | No       | —       | 5-field cron expression controlling when to disconnect             |
+| `enabled`    | No       | `false` | Must be `true` to activate the bridge                             |
+
+### Cron expression syntax
+
+Cron fields: `minute hour day-of-month month day-of-week`
+
+| Syntax  | Example      | Meaning                        |
+|---------|--------------|--------------------------------|
+| `*`     | `*`          | Every value                    |
+| `N`     | `30`         | Exact value                    |
+| `N-M`   | `1-5`        | Inclusive range                |
+| `*/N`   | `*/15`       | Every N steps from minimum     |
+| `N-M/N` | `8-18/2`     | Range with step                |
+| `N,M`   | `1,3,5`      | Comma-separated list           |
 
 ## Running
 
